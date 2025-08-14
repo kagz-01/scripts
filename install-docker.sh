@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 echo "=== Docker Installation Script ==="
 
@@ -7,52 +8,59 @@ if [ -f /etc/os-release ]; then
     . /etc/os-release
     DISTRO=$ID
 else
-    echo "Cannot detect Linux distribution."
+    echo "❌ Could not detect distribution."
     exit 1
-fi
-
-# Treat Kali as Debian
-if [[ "$DISTRO" == "kali" ]]; then
-    echo "Detected Kali Linux - using Debian instructions."
-    DISTRO="debian"
 fi
 
 echo "Detected distribution: $DISTRO"
 
-# Remove old versions
+# Ensure script is run as root
+if [ "$EUID" -ne 0 ]; then
+    echo "❌ Please run as root (sudo ./install-docker.sh)"
+    exit 1
+fi
+
+# Remove old Docker versions
 echo "Removing old Docker versions (if present)..."
-sudo apt remove -y docker docker-engine docker.io containerd runc
+apt-get remove -y docker docker-engine docker.io containerd runc || true
 
-# Install dependencies
-echo "Installing dependencies..."
-sudo apt update -y && sudo apt install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release
+# For Kali/Debian-based distros
+if [[ "$DISTRO" == "kali" || "$DISTRO" == "debian" || "$DISTRO" == "ubuntu" ]]; then
+    echo "Updating package index..."
+    apt-get update -y
 
-# Add Docker's official GPG key
-echo "Adding Docker GPG key..."
-curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo "Installing prerequisites..."
+    apt-get install -y \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release
 
-# Set up the stable repository
-echo "Setting up Docker repository..."
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/$DISTRO \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    echo "Adding Docker's official GPG key..."
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
 
-# Install Docker Engine
-echo "Installing Docker..."
-sudo apt update -y && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    echo "Setting up Docker repository..."
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+      $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
 
-# Enable & start Docker
-echo "Enabling and starting Docker..."
-sudo systemctl enable docker
-sudo systemctl start docker
+    echo "Updating package index (with Docker repo)..."
+    apt-get update -y
 
-# Test Docker installation
-echo "Testing Docker..."
-sudo docker run hello-world
+    echo "Installing Docker..."
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-echo "=== Docker installation completed successfully! ==="
+    echo "Enabling and starting Docker service..."
+    systemctl enable docker
+    systemctl start docker
+
+    echo "✅ Docker installation completed successfully."
+    docker --version
+    docker compose version
+else
+    echo "❌ Unsupported distribution: $DISTRO"
+    exit 1
+fi
