@@ -15,7 +15,7 @@ fi
 echo "Detected distribution: $DISTRO"
 
 # Ensure script is run as root
-if [ "$EUID" -ne 0 ]; then
+if [ "$EUID" -ne 0 ]; thens
     echo "❌ Please run as root (sudo ./install-docker.sh)"
     exit 1
 fi
